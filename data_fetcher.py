@@ -34,6 +34,6 @@ class DataFetcher:
         df["low"] = pd.to_numeric(df["low"], errors="coerce")
         df["close"] = pd.to_numeric(df["close"], errors="coerce")
         df["volume"] = pd.to_numeric(df["volume"], errors="coerce")
-        df["timestamp"] = df["open_time"].apply(lambda x: x / 1000)
+        df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms")
         df = df[["timestamp", "open", "high", "low", "close", "volume"]]
         return df

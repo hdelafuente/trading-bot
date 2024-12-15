@@ -1,128 +1,127 @@
-import os
-import time
-import pprint as pp
-from datetime import datetime
-from strategy import Strategy
-from data_fetcher import DataFetcher
-from binance_integration import BinanceIntegration
-from backtester import Backtester
 import sys
 import json
+import pandas as pd
+from time import sleep
+from utils import (
+    API_KEY,
+    API_SECRET,
+    SYMBOLS,
+    TIMEFRAME,
+    TP,
+    SL,
+    LEVERAGE,
+    RISK_BALANCE,
+    BALANCE,
+)
+from bot import TradingBot
+from metrics import Metrics
 
-DEBUG_MODE = os.environ.get("DEBUG_MODE", "True") == "True"
 
-
-def run_bot(symbol="BTCUSDT", interval="30m", strategy_name="sma_crossover"):
-    params = {}
-    if strategy_name == "sma_crossover":
-        params = {"short_window": 10, "long_window": 30}
-    elif strategy_name == "rsi":
-        params = {"rsi_period": 14}
-    elif strategy_name == "bollinger":
-        params = {"period": 20, "multiplier": 2}
-
-    strat = Strategy(strategy_name=strategy_name, params=params)
-    dfetch = DataFetcher(symbol=symbol, interval=interval)
-
-    # Colocar tus claves reales
-    API_KEY = os.environ.get("API_KEY")
-    API_SECRET = os.environ.get("API_SECRET")
-
-    binance_client = BinanceIntegration(API_KEY, API_SECRET)
-
-    quantity = 0.001
+def run(
+    symbols: list,
+    timeframe: str,
+    tp: float,
+    sl: float,
+    leverage: int,
+    risk_balance: float,
+):
+    bot = TradingBot(API_KEY, API_SECRET, leverage, risk_balance, max_positions=3)
+    mode = "ISOLATED"
 
     while True:
-        df = dfetch.fetch_klines(limit=100)
-        signal, entry_price = strat.generate_signals(df)
+        try:
+            balance = bot.session.get_balance_usdt()
+            positions = bot.session.get_positions()
+            orders = bot.session.check_orders()
+            qty = balance * bot.leverage * bot.risk_balance
 
-        current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        print(
-            f"[{current_time}] Signal: {signal}, Price: {entry_price}, DEBUG_MODE={DEBUG_MODE}"
-        )
+            for elem in orders:
+                if elem["symbol"] not in [pos["symbol"] for pos in positions]:
+                    bot.session.close_open_orders(elem["symbol"])
 
-        # Tomar acción (si no estamos en debug)
-        if not DEBUG_MODE and signal in ["long", "short"]:
-            side = "BUY" if signal == "long" else "SELL"
-            order = binance_client.place_order(symbol, side, quantity)
-            if order:
-                print(f"Order placed: {order}")
-            else:
-                print("Failed to place order.")
+            print(f"Balance: {round(balance, 3)} USDT")
+            print(f"{len(positions)} Positions: {[pos['symbol'] for pos in positions]}")
+            bot.update_positions_pnl()
 
-        # Esperar 5 minutos
-        time.sleep(300)
+            for pos in positions:
+                print(
+                    f"{pos['symbol']} ({pos['sign']}) entry: $ {pos['entry_price']} USDT  PnL: $ {pos['pnl']} USDT"
+                )
+
+            if len(positions) < bot.max_positions:
+                print("Looking for signals...")
+                signals = bot.look_for_signals(symbols, timeframe)
+                if signals:
+                    for signal in signals:
+                        bot.open_real_position(
+                            signal["symbol"], signal["sign"], qty, mode, tp, sl
+                        )
+                        if len(positions) >= bot.max_positions:
+                            break
+
+            wait = 60 * 2
+            print(f"Waiting {wait} sec")
+            sleep(wait)
+        except Exception as err:
+            print(err)
+            sleep(30)
+        except KeyboardInterrupt:
+            print("Finishing...")
+            df = pd.DataFrame(bot.trades)
+            print(df)
+            break
 
 
-def run_backtest(
-    symbol="BTCUSDT",
-    interval="30m",
-    strategy_name="sma_crossover",
-    stop_loss=0.02,
-    take_profit=0.04,
-    initial_capital=1000,
-    qty=0.01,
+def backtest(
+    symbol: str,
+    timeframe: str,
+    tp: float,
+    sl: float,
+    leverage: int,
+    balance: float,
+    risk_balance: float,
 ):
-    params = {}
-    if strategy_name == "sma_crossover":
-        params = {"short_window": 10, "long_window": 30}
-    elif strategy_name == "rsi":
-        params = {"rsi_period": 14}
-    elif strategy_name == "bollinger":
-        params = {"period": 20, "multiplier": 2}
+    print(f"Backtesting {symbol} on {timeframe} timeframe")
+    bot = TradingBot(API_KEY, API_SECRET, leverage, risk_balance, max_positions=1)
+    trades = bot.backtest(symbol, timeframe, tp, sl, balance)
+    metrics = Metrics.calculate_metrics(trades, balance)
 
-    strat = Strategy(strategy_name=strategy_name, params=params)
-    dfetch = DataFetcher(symbol=symbol, interval=interval)
-    df = dfetch.fetch_klines(limit=1000)
+    # Convert any Timestamp objects to strings
+    for trade in trades:
+        if isinstance(trade.get("exit_date"), pd.Timestamp):
+            trade["exit_date"] = trade["exit_date"].isoformat()
 
-    bt = Backtester(
-        strategy=strat,
-        stop_loss_pct=stop_loss,
-        take_profit_pct=take_profit,
-        initial_capital=initial_capital,
-        qty=qty,
-    )
-    results = bt.run_backtest(df)
+        if isinstance(trade.get("entry_date"), pd.Timestamp):
+            trade["entry_date"] = trade["entry_date"].isoformat()
 
-    # Add initial capital to results
-    results["initial_capital"] = initial_capital
+    config = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "tp": tp,
+        "sl": sl,
+        "leverage": leverage,
+        "balance": balance,
+        "risk_balance": risk_balance,
+    }
+    result = {"metrics": metrics, "trades": trades, "config": config}
 
-    # Save results to a JSON file
-    with open("backtest_results.json", "w") as f:
-        json.dump(results, f, indent=4)
+    # Save result to a JSON file
+    with open(f"backtest_results_{symbol}.json", "w") as f:
+        json.dump(result, f, indent=4)
 
-    print("Backtest Results:")
-    pp.pprint(results)
+    return result
 
 
 if __name__ == "__main__":
-    # Comandos:
-    # python main.py run_bot
-    # python main.py run_backtest
 
     if len(sys.argv) > 1:
-        mode = sys.argv[1]
-        symbol = os.environ.get("SYMBOL", "BTCUSDT")
-        interval = os.environ.get("INTERVAL", "30m")
-        strategy_name = os.environ.get("STRATEGY_NAME", "sma_crossover")
-
-        if mode == "run_bot":
-            run_bot(symbol=symbol, interval=interval, strategy_name=strategy_name)
-        elif mode == "run_backtest":
-            stop_loss = float(os.environ.get("STOP_LOSS", "0.02"))
-            take_profit = float(os.environ.get("TAKE_PROFIT", "0.04"))
-            initial_capital = float(os.environ.get("INITIAL_CAPITAL", "1000"))
-            qty = float(os.environ.get("QTY", "0.01"))
-            run_backtest(
-                symbol=symbol,
-                interval=interval,
-                strategy_name=strategy_name,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                initial_capital=initial_capital,
-                qty=qty,
-            )
-        else:
-            print("Modo no soportado. Use 'run_bot' o 'run_backtest'.")
-    else:
-        print("Por favor, especifique el modo: run_bot o run_backtest")
+        if sys.argv[1] == "run":
+            run(SYMBOLS, TIMEFRAME, TP, SL, LEVERAGE, RISK_BALANCE)
+        elif sys.argv[1] == "backtest":
+            output = list()
+            for symbol in SYMBOLS:
+                metrics = backtest(
+                    symbol, TIMEFRAME, TP, SL, LEVERAGE, BALANCE, RISK_BALANCE
+                )
+                metrics["symbol"] = symbol
+                output.append(metrics)

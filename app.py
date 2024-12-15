@@ -1,146 +1,155 @@
-import os
 import dash
-from dash import dcc, html
-import dash_bootstrap_components as dbc
-import plotly.express as px
-import plotly.graph_objects as go
+from dash import dcc, html, dash_table
 import pandas as pd
 import json
-from datetime import datetime
-from data_fetcher import DataFetcher  # Import DataFetcher
+from dash.dependencies import Input, Output
+from bot import TradingBot
+from utils import API_KEY, API_SECRET, SYMBOLS
 
-# Load backtest results
-with open("backtest_results.json", "r") as f:
-    results = json.load(f)
 
-# Convert trades to DataFrame
-trades_df = pd.DataFrame(results["trades"])
+# Load backtest results from JSON files
+def load_backtest_results(symbols):
+    results = []
+    for symbol in symbols:
+        with open(f"backtest_results_{symbol}.json", "r") as f:
+            result = json.load(f)
+            result["symbol"] = symbol
+            results.append(result)
+    return results
 
-# Convert timestamps to readable dates
-trades_df["entry_date"] = trades_df["entry_timestamp"].apply(
-    lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S")
-)
-trades_df["exit_date"] = trades_df["exit_timestamp"].apply(
-    lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S")
-)
 
-# Fetch close prices using DataFetcher
-data_fetcher = DataFetcher(symbol=os.getenv("SYMBOL"), interval=os.getenv("INTERVAL"))
-price_df = data_fetcher.fetch_klines(limit=1000)
+# Prepare data for the Dash app
+symbols = SYMBOLS
+backtest_results = load_backtest_results(symbols)
 
-# Convert timestamps to readable dates for price data
-price_df["date"] = price_df["timestamp"].apply(
-    lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S")
-)
+# Initialize the Dash app
+app = dash.Dash(__name__)
 
-# Initialize Dash app with Bootstrap theme
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-# Create metric cards using Bootstrap
-metrics_cards = dbc.Row(
+# Define the layout of the app
+app.layout = html.Div(
     [
-        dbc.Col(
-            dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.H5("Initial Capital", className="card-title"),
-                        html.P(
-                            f"${results['initial_capital']:,.2f}", className="card-text"
-                        ),
-                    ]
-                )
-            ),
-            width=3,
+        html.H1("Backtest Results"),
+        dcc.Dropdown(
+            id="symbol-dropdown",
+            options=[{"label": symbol, "value": symbol} for symbol in symbols],
+            value=symbols[0],  # Default value
+            style={"margin-bottom": "20px"},
         ),
-        dbc.Col(
-            dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.H5("Final Capital", className="card-title"),
-                        html.P(
-                            f"${results['final_capital']:,.2f}", className="card-text"
-                        ),
-                    ]
-                )
-            ),
-            width=3,
+        html.Div(
+            id="metrics-table",
+            style={"margin-bottom": "20px"},
         ),
-        dbc.Col(
-            dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.H5("Win Rate", className="card-title"),
-                        html.P(
-                            f"{results['win_rate'] * 100:.1f}%", className="card-text"
-                        ),
-                    ]
-                )
-            ),
-            width=3,
+        html.Div(
+            id="trades-table",
+            style={"margin-bottom": "20px"},
         ),
-        dbc.Col(
-            dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.H5("Total Trades", className="card-title"),
-                        html.P(f"{results['total_trades']}", className="card-text"),
-                    ]
-                )
-            ),
-            width=3,
+        dcc.Graph(
+            id="pnl-bar-chart",
+            style={"margin-bottom": "20px"},
         ),
-    ],
-    className="mb-4",
+        dcc.Graph(
+            id="price-line-chart",
+            style={"margin-bottom": "20px"},
+        ),
+    ]
 )
 
-# Create the close price line chart with markers
-close_price_fig = go.Figure()
 
-# Add the line for close prices
-close_price_fig.add_trace(
-    go.Scatter(
-        x=price_df["date"], y=price_df["close"], mode="lines", name="Close Price"
+# Callback to update tables and charts based on selected symbol
+@app.callback(
+    [
+        Output("metrics-table", "children"),
+        Output("trades-table", "children"),
+        Output("pnl-bar-chart", "figure"),
+        Output("price-line-chart", "figure"),
+    ],
+    [Input("symbol-dropdown", "value")],
+)
+def update_content(selected_symbol):
+    # Instantiate TradingBot and fetch klines with indicators
+    bot = TradingBot(
+        api_key=API_KEY,
+        api_secret=API_SECRET,
+        leverage=10,
+        risk_balance=0.3,
+        max_positions=1,
     )
-)
+    kl = bot.fetch_klines_with_indicators(selected_symbol, "30m")
 
-close_price_fig.update_layout(
-    title="Close Price Over Time with Trade Markers",
-    xaxis_title="Date",
-    yaxis_title="Close Price",
-)
+    # Filter results for the selected symbol
+    selected_result = next(
+        res for res in backtest_results if res["symbol"] == selected_symbol
+    )
+    metrics_df = pd.DataFrame([selected_result["metrics"]])
+    trades_df = pd.DataFrame(selected_result["trades"])
 
-app.layout = dbc.Container(
-    [
-        html.H1("Backtest Results", className="my-4"),
-        metrics_cards,
-        dcc.Graph(
-            id="trades-graph",
-            figure=px.bar(
-                trades_df,
-                x="entry_date",
-                y="profit",
-                title="Trade Profits Over Time",
-                labels={"entry_date": "Entry Date", "profit": "Profit"},
-                hover_data=["exit_date"],
-            ),
-        ),
-        dcc.Graph(
-            id="balance-graph",
-            figure=px.line(
-                trades_df,
-                x="exit_date",
-                y="balance_after_trade",
-                title="Balance Over Time",
-                labels={"exit_date": "Exit Date", "balance_after_trade": "Balance"},
-            ),
-        ),
-        dcc.Graph(
-            id="close-price-graph",
-            figure=close_price_fig,
-        ),
-    ],
-    fluid=True,
-)
+    metrics_table = dash_table.DataTable(
+        data=metrics_df.to_dict("records"),
+        columns=[{"name": i, "id": i} for i in metrics_df.columns],
+        style_table={"overflowX": "auto"},
+        style_cell={"textAlign": "left"},
+    )
 
+    trades_table = dash_table.DataTable(
+        data=trades_df.to_dict("records"),
+        columns=[{"name": i, "id": i} for i in trades_df.columns],
+        style_table={"overflowX": "auto"},
+        style_cell={"textAlign": "left"},
+    )
+
+    # Create a bar chart for PnL
+    pnl_fig = {
+        "data": [
+            {
+                "x": trades_df["exit_date"],
+                "y": trades_df["pnl"],
+                "type": "bar",
+                "name": "PnL",
+            },
+        ],
+        "layout": {
+            "title": "PnL by Exit Date",
+            "xaxis": {"title": "Exit Date"},
+            "yaxis": {"title": "PnL"},
+        },
+    }
+
+    # Create a line chart for Close Price with trade markers
+    trade_markers = trades_df
+
+    price_fig = {
+        "data": [
+            {
+                "x": kl.index,
+                "y": kl["Close"],
+                "type": "line",
+                "name": "Close Price",
+            },
+            {
+                "x": trade_markers["entry_date"],
+                "y": trade_markers["entry_price"],
+                "mode": "markers",
+                "name": "Trade Open",
+                "marker": {"color": "green", "size": 10},
+            },
+            {
+                "x": trade_markers["exit_date"],
+                "y": trade_markers["exit_price"],
+                "mode": "markers",
+                "name": "Trade Close",
+                "marker": {"color": "red", "size": 10},
+            },
+        ],
+        "layout": {
+            "title": "Close Price with Trade Markers",
+            "xaxis": {"title": "Date"},
+            "yaxis": {"title": "Price"},
+        },
+    }
+
+    return metrics_table, trades_table, pnl_fig, price_fig
+
+
+# Run the app
 if __name__ == "__main__":
     app.run_server(debug=True)
