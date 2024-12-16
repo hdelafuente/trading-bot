@@ -18,14 +18,12 @@ from metrics import Metrics
 
 
 def run(
+    bot: TradingBot,
     symbols: list,
     timeframe: str,
     tp: float,
     sl: float,
-    leverage: int,
-    risk_balance: float,
 ):
-    bot = TradingBot(API_KEY, API_SECRET, leverage, risk_balance, max_positions=3)
     mode = "ISOLATED"
 
     while True:
@@ -73,6 +71,7 @@ def run(
 
 
 def backtest(
+    bot: TradingBot,
     symbol: str,
     timeframe: str,
     tp: float,
@@ -82,11 +81,9 @@ def backtest(
     risk_balance: float,
 ):
     print(f"Backtesting {symbol} on {timeframe} timeframe")
-    bot = TradingBot(API_KEY, API_SECRET, leverage, risk_balance, max_positions=1)
     trades = bot.backtest(symbol, timeframe, tp, sl, balance)
-    metrics = Metrics.calculate_metrics(trades, balance)
+    metrics = Metrics().calculate_metrics(trades, balance)
 
-    # Convert any Timestamp objects to strings
     for trade in trades:
         if isinstance(trade.get("exit_date"), pd.Timestamp):
             trade["exit_date"] = trade["exit_date"].isoformat()
@@ -106,7 +103,7 @@ def backtest(
     result = {"metrics": metrics, "trades": trades, "config": config}
 
     # Save result to a JSON file
-    with open(f"backtest_results_{symbol}.json", "w") as f:
+    with open(f"results/backtest_results_{symbol}.json", "w") as f:
         json.dump(result, f, indent=4)
 
     return result
@@ -115,13 +112,14 @@ def backtest(
 if __name__ == "__main__":
 
     if len(sys.argv) > 1:
+        bot = TradingBot(API_KEY, API_SECRET, LEVERAGE, RISK_BALANCE, max_positions=3)
         if sys.argv[1] == "run":
-            run(SYMBOLS, TIMEFRAME, TP, SL, LEVERAGE, RISK_BALANCE)
+            run(bot, SYMBOLS, TIMEFRAME, TP, SL)
         elif sys.argv[1] == "backtest":
             output = list()
             for symbol in SYMBOLS:
                 metrics = backtest(
-                    symbol, TIMEFRAME, TP, SL, LEVERAGE, BALANCE, RISK_BALANCE
+                    bot, symbol, TIMEFRAME, TP, SL, LEVERAGE, BALANCE, RISK_BALANCE
                 )
                 metrics["symbol"] = symbol
                 output.append(metrics)

@@ -11,7 +11,7 @@ from utils import API_KEY, API_SECRET, SYMBOLS
 def load_backtest_results(symbols):
     results = []
     for symbol in symbols:
-        with open(f"backtest_results_{symbol}.json", "r") as f:
+        with open(f"results/backtest_results_{symbol}.json", "r") as f:
             result = json.load(f)
             result["symbol"] = symbol
             results.append(result)
@@ -35,21 +35,27 @@ app.layout = html.Div(
             value=symbols[0],  # Default value
             style={"margin-bottom": "20px"},
         ),
-        html.Div(
-            id="metrics-table",
-            style={"margin-bottom": "20px"},
-        ),
-        html.Div(
-            id="trades-table",
-            style={"margin-bottom": "20px"},
-        ),
-        dcc.Graph(
-            id="pnl-bar-chart",
-            style={"margin-bottom": "20px"},
-        ),
-        dcc.Graph(
-            id="price-line-chart",
-            style={"margin-bottom": "20px"},
+        dcc.Loading(
+            id="loading-metrics",
+            type="circle",
+            children=[
+                html.Div(
+                    id="metrics-table",
+                    style={"margin-bottom": "20px"},
+                ),
+                html.Div(
+                    id="trades-table",
+                    style={"margin-bottom": "20px"},
+                ),
+                dcc.Graph(
+                    id="pnl-bar-chart",
+                    style={"margin-bottom": "20px"},
+                ),
+                dcc.Graph(
+                    id="price-line-chart",
+                    style={"margin-bottom": "20px"},
+                ),
+            ],
         ),
     ]
 )
@@ -114,9 +120,11 @@ def update_content(selected_symbol):
         },
     }
 
-    # Create a line chart for Close Price with trade markers
-    trade_markers = trades_df
+    # Separate winning and losing trades
+    winning_trades = trades_df[trades_df["pnl"] > 0]
+    losing_trades = trades_df[trades_df["pnl"] <= 0]
 
+    # Create a line chart for Close Price with trade markers
     price_fig = {
         "data": [
             {
@@ -126,18 +134,32 @@ def update_content(selected_symbol):
                 "name": "Close Price",
             },
             {
-                "x": trade_markers["entry_date"],
-                "y": trade_markers["entry_price"],
+                "x": winning_trades["entry_date"],
+                "y": winning_trades["entry_price"],
                 "mode": "markers",
-                "name": "Trade Open",
+                "name": "Winning Trade Open",
                 "marker": {"color": "green", "size": 10},
             },
             {
-                "x": trade_markers["exit_date"],
-                "y": trade_markers["exit_price"],
+                "x": winning_trades["exit_date"],
+                "y": winning_trades["exit_price"],
                 "mode": "markers",
-                "name": "Trade Close",
+                "name": "Winning Trade Close",
+                "marker": {"color": "green", "size": 10, "symbol": "x"},
+            },
+            {
+                "x": losing_trades["entry_date"],
+                "y": losing_trades["entry_price"],
+                "mode": "markers",
+                "name": "Losing Trade Open",
                 "marker": {"color": "red", "size": 10},
+            },
+            {
+                "x": losing_trades["exit_date"],
+                "y": losing_trades["exit_price"],
+                "mode": "markers",
+                "name": "Losing Trade Close",
+                "marker": {"color": "red", "size": 10, "symbol": "x"},
             },
         ],
         "layout": {

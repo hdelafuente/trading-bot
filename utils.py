@@ -3,8 +3,8 @@ import os
 
 SYMBOLS = [
     "BTCUSDT",
-    "ETHUSDT",
-    "SOLUSDT",
+    # "ETHUSDT",
+    # "SOLUSDT",
     # "DOGEUSDT",
     # "BCHUSDT",
     # "ADAUSDT",
@@ -13,10 +13,10 @@ SYMBOLS = [
     # "LINKUSDT",
 ]
 TIMEFRAME = "30m"
-TP = 0.07
-SL = 0.02
-LEVERAGE = 10
-BALANCE = 1000
+TP = 0.05
+SL = 0.03
+LEVERAGE = 15
+BALANCE = 500
 RISK_BALANCE = 0.3
 API_SECRET = os.environ.get("API_SECRET")
 API_KEY = os.environ.get("API_KEY")
