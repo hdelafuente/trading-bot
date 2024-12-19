@@ -1,28 +1,18 @@
 import numpy as np
+import datetime as dt
 
 
 class Metrics:
 
     def calculate_metrics(self, trades, initial_balance):
-        final_balance = initial_balance
         wins = []
         losses = []
 
         for trade in trades:
-            trade_return = (
-                (trade["exit_price"] - trade["entry_price"])
-                * (trade["qty"] / trade["entry_price"])
-                if trade["sign"] == "buy"
-                else (trade["entry_price"] - trade["exit_price"])
-                * (trade["qty"] / trade["entry_price"])
-            )
-            final_balance += trade_return
-            trade["pnl"] = trade_return
-
-            if trade_return > 0:
-                wins.append(trade_return)
+            if trade["pnl"] > 0:
+                wins.append(trade["pnl"])
             else:
-                losses.append(trade_return)
+                losses.append(trade["pnl"])
 
         win_ratio = len(wins) / len(trades) if trades else 0
         average_win = np.mean(wins) if wins else 0
@@ -38,9 +28,16 @@ class Metrics:
         sum_pnl_loss = sum(t["pnl"] for t in trades if t["pnl"] < 0)
         profit_factor = sum_pnl_win / abs(sum_pnl_loss) if sum_pnl_loss != 0 else 0
 
+        start_date = f"{trades[0]['entry_date'].year}-{trades[0]['entry_date'].month}-{trades[0]['entry_date'].day}"
+
+        if trades[-1]["exit_date"]:
+            end_date = f"{trades[-1]['exit_date'].year}-{trades[-1]['exit_date'].month}-{trades[-1]['exit_date'].day}"
+        else:
+            end_date = f"{trades[-2]['exit_date'].year}-{trades[-2]['exit_date'].month}-{trades[-2]['exit_date'].day}"
+
         return {
             "initial_balance": round(initial_balance, 2),
-            "final_balance": round(final_balance, 2),
+            "final_balance": round(trades[-1]["final_balance"], 2),
             "win_ratio": round(win_ratio, 2),
             "average_win": round(average_win, 2),
             "average_loss": round(average_loss, 2),
@@ -48,6 +45,8 @@ class Metrics:
             "roi": round(roi, 2),
             "max_drawdown": round(max_drawdown, 2),
             "profit_factor": round(profit_factor, 2),
+            "start_date": start_date,
+            "end_date": end_date,
         }
 
     def calculate_max_drawdown(self, trades, initial_balance):

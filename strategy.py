@@ -1,7 +1,17 @@
 class Strategy:
 
-    @staticmethod
-    def zeus(data):
+    def available_strategies(self):
+        return ["zeus", "ichimoku_cloud_with_confirmation", "stoch_rsi_ema_200"]
+
+    def get_signal(self, data, strategy_name):
+        if strategy_name == "zeus":
+            return self.zeus(data)
+        elif strategy_name == "ichimoku_cloud_with_confirmation":
+            return self.ichimoku_cloud_with_confirmation(data)
+        elif strategy_name == "stoch_rsi_ema_200":
+            return self.stoch_rsi_ema_200(data)
+
+    def zeus(self, data):
         actual_close = data.Close.iloc[-1]
         prev_close = data.Close.iloc[-2]
 
@@ -46,8 +56,7 @@ class Strategy:
         else:
             return "hold"
 
-    @staticmethod
-    def ichimoku_cloud_with_confirmation(data):
+    def ichimoku_cloud_with_confirmation(self, data):
         if (
             data.senkou_span_a.iloc[-1] > data.senkou_span_b.iloc[-1]
             and data.Close.iloc[-1] > data.tenkan_sen.iloc[-1]
@@ -69,8 +78,7 @@ class Strategy:
         else:
             return "hold"
 
-    @staticmethod
-    def stoch_rsi_ema_200(data):
+    def stoch_rsi_ema_200(self, data):
         if (
             data.stoch_rsi.iloc[-1] <= 20
             and data.ema_200.iloc[-1] < data.Close.iloc[-1]

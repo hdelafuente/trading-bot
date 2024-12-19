@@ -1,16 +1,11 @@
 import ta
 import os
+import json
 
 SYMBOLS = [
     "BTCUSDT",
-    # "ETHUSDT",
-    # "SOLUSDT",
-    # "DOGEUSDT",
-    # "BCHUSDT",
-    # "ADAUSDT",
-    # "LTCUSDT",
-    # "GMTUSDT",
-    # "LINKUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
 ]
 TIMEFRAME = "30m"
 TP = 0.05
@@ -20,14 +15,29 @@ BALANCE = 500
 RISK_BALANCE = 0.3
 API_SECRET = os.environ.get("API_SECRET")
 API_KEY = os.environ.get("API_KEY")
+"""
+current strategies:
+- ichimoku_cloud_with_confirmation
+- stoch_rsi_ema_200
+- zeus
+"""
+STRATEGY = "ichimoku_cloud_with_confirmation"
+STRATEGIES = ["ichimoku_cloud_with_confirmation", "stoch_rsi_ema_200", "zeus"]
+
+
+def load_backtest_results(selected_strategy, symbol):
+    with open(f"results/{selected_strategy}_backtest_results_{symbol}.json", "r") as f:
+        result = json.load(f)
+        result["symbol"] = symbol
+        return result
 
 
 def add_indicators(data):
-    # ichi = ta.trend.IchimokuIndicator(high=data.High, low=data.Low)
-    # data["tenkan_sen"] = ichi.ichimoku_base_line()
-    # data["kijun_sen"] = ichi.ichimoku_conversion_line()
-    # data["senkou_span_a"] = ichi.ichimoku_a()
-    # data["senkou_span_b"] = ichi.ichimoku_b()
+    ichi = ta.trend.IchimokuIndicator(high=data.High, low=data.Low)
+    data["tenkan_sen"] = ichi.ichimoku_base_line()
+    data["kijun_sen"] = ichi.ichimoku_conversion_line()
+    data["senkou_span_a"] = ichi.ichimoku_a()
+    data["senkou_span_b"] = ichi.ichimoku_b()
 
     # data["rsi"] = ta.momentum.rsi(data.Close, window=14)
     # MACD
@@ -40,10 +50,10 @@ def add_indicators(data):
     data["rsi"] = ta.momentum.rsi(data.Close, window=14)
 
     # Stoch RSI
-    # stoch_rsi = ta.momentum.StochRSIIndicator(data.Close, window=14)
-    # data["stoch_rsi"] = stoch_rsi.stochrsi()
-    # data["stoch_rsi_k"] = stoch_rsi.stochrsi_k()
-    # data["stoch_rsi_d"] = stoch_rsi.stochrsi_d()
+    stoch_rsi = ta.momentum.StochRSIIndicator(data.Close, window=14)
+    data["stoch_rsi"] = stoch_rsi.stochrsi()
+    data["stoch_rsi_k"] = stoch_rsi.stochrsi_k()
+    data["stoch_rsi_d"] = stoch_rsi.stochrsi_d()
 
     # Bandas de Bollinger
     indicator_bb = ta.volatility.BollingerBands(data.Close, window=20, window_dev=2)
@@ -56,7 +66,7 @@ def add_indicators(data):
     # data["ema_20"] = ta.trend.ema_indicator(data.Close, window=20)
     # data["ema_50"] = ta.trend.ema_indicator(data.Close, window=50)
     # data["ema_100"] = ta.trend.ema_indicator(data.Close, window=100)
-    # data["ema_200"] = ta.trend.ema_indicator(data.Close, window=200)
+    data["ema_200"] = ta.trend.ema_indicator(data.Close, window=200)
 
     # Average true range
     # atr = ta.volatility.AverageTrueRange(data.High, data.Low, data.Close, window=14)

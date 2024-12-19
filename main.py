@@ -12,9 +12,10 @@ from utils import (
     LEVERAGE,
     RISK_BALANCE,
     BALANCE,
+    STRATEGIES,
+    STRATEGY,
 )
 from bot import TradingBot
-from metrics import Metrics
 
 
 def run(
@@ -23,6 +24,7 @@ def run(
     timeframe: str,
     tp: float,
     sl: float,
+    strategy: str,
 ):
     mode = "ISOLATED"
 
@@ -70,56 +72,21 @@ def run(
             break
 
 
-def backtest(
-    bot: TradingBot,
-    symbol: str,
-    timeframe: str,
-    tp: float,
-    sl: float,
-    leverage: int,
-    balance: float,
-    risk_balance: float,
-):
-    print(f"Backtesting {symbol} on {timeframe} timeframe")
-    trades = bot.backtest(symbol, timeframe, tp, sl, balance)
-    metrics = Metrics().calculate_metrics(trades, balance)
-
-    for trade in trades:
-        if isinstance(trade.get("exit_date"), pd.Timestamp):
-            trade["exit_date"] = trade["exit_date"].isoformat()
-
-        if isinstance(trade.get("entry_date"), pd.Timestamp):
-            trade["entry_date"] = trade["entry_date"].isoformat()
-
-    config = {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "tp": tp,
-        "sl": sl,
-        "leverage": leverage,
-        "balance": balance,
-        "risk_balance": risk_balance,
-    }
-    result = {"metrics": metrics, "trades": trades, "config": config}
-
-    # Save result to a JSON file
-    with open(f"results/backtest_results_{symbol}.json", "w") as f:
-        json.dump(result, f, indent=4)
-
-    return result
-
-
 if __name__ == "__main__":
 
     if len(sys.argv) > 1:
-        bot = TradingBot(API_KEY, API_SECRET, LEVERAGE, RISK_BALANCE, max_positions=3)
+        bot = TradingBot(
+            API_KEY,
+            API_SECRET,
+            LEVERAGE,
+            RISK_BALANCE,
+            max_positions=3,
+            selected_strategy=STRATEGY,
+        )
+        bot.fetch_klines(SYMBOLS, TIMEFRAME)
         if sys.argv[1] == "run":
-            run(bot, SYMBOLS, TIMEFRAME, TP, SL)
+            run(bot, SYMBOLS, TIMEFRAME, TP, SL, STRATEGY)
         elif sys.argv[1] == "backtest":
-            output = list()
-            for symbol in SYMBOLS:
-                metrics = backtest(
-                    bot, symbol, TIMEFRAME, TP, SL, LEVERAGE, BALANCE, RISK_BALANCE
-                )
-                metrics["symbol"] = symbol
-                output.append(metrics)
+            for strategy in STRATEGIES:
+                print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
+                bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
