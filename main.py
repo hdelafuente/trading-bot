@@ -1,5 +1,5 @@
 import sys
-import json
+import time
 import pandas as pd
 from time import sleep
 from utils import (
@@ -83,10 +83,33 @@ if __name__ == "__main__":
             max_positions=3,
             selected_strategy=STRATEGY,
         )
+        print("Fetching klines...")
         bot.fetch_klines(SYMBOLS, TIMEFRAME)
         if sys.argv[1] == "run":
             run(bot, SYMBOLS, TIMEFRAME, TP, SL, STRATEGY)
         elif sys.argv[1] == "backtest":
-            for strategy in STRATEGIES:
-                print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
-                bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
+            if not len(sys.argv) > 2:
+                print("Please specify a strategy to backtest")
+                sys.exit(1)
+            else:
+                strategy = sys.argv[2]
+
+                if strategy == "all":
+                    for strategy in STRATEGIES:
+                        print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
+                        bot.add_signals(strategy)
+                        bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
+                else:
+                    if strategy not in STRATEGIES:
+                        print(f"Strategy {strategy} not found")
+                        sys.exit(1)
+                    print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
+                    print("Adding signals...")
+                    start_time = time.time()
+                    bot.add_signals(strategy)
+                    print(f"Adding signals took {time.time() - start_time:.2f} seconds")
+
+                    print("Running backtest...")
+                    start_time = time.time()
+                    bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
+                    print(f"Backtest took {time.time() - start_time:.2f} seconds")

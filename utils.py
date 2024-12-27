@@ -5,13 +5,12 @@ import json
 SYMBOLS = [
     "BTCUSDT",
     "ETHUSDT",
-    "BNBUSDT",
 ]
-TIMEFRAME = "30m"
+TIMEFRAME = "1h"
 TP = 0.05
-SL = 0.03
-LEVERAGE = 15
-BALANCE = 500
+SL = 0.02
+LEVERAGE = 10
+BALANCE = 300
 RISK_BALANCE = 0.3
 API_SECRET = os.environ.get("API_SECRET")
 API_KEY = os.environ.get("API_KEY")
@@ -21,8 +20,12 @@ current strategies:
 - stoch_rsi_ema_200
 - zeus
 """
-STRATEGY = "ichimoku_cloud_with_confirmation"
-STRATEGIES = ["ichimoku_cloud_with_confirmation", "stoch_rsi_ema_200", "zeus"]
+STRATEGY = "zeus"
+STRATEGIES = [
+    "ichimoku_cloud_with_confirmation",
+    "stoch_rsi_ema_200",
+    "zeus",
+]
 
 
 def load_backtest_results(selected_strategy, symbol):
@@ -68,6 +71,10 @@ def add_indicators(data):
     # data["ema_100"] = ta.trend.ema_indicator(data.Close, window=100)
     data["ema_200"] = ta.trend.ema_indicator(data.Close, window=200)
 
+    # ADX
+    adx = ta.trend.ADXIndicator(data.High, data.Low, data.Close, window=14)
+    data["adx"] = adx.adx()
+
     # Average true range
     # atr = ta.volatility.AverageTrueRange(data.High, data.Low, data.Close, window=14)
     # data["atr"] = atr.average_true_range()
@@ -99,6 +106,9 @@ def add_indicators(data):
     # # ROC
     # roc = ta.momentum.ROCIndicator(data.Close, window=12)
     # data["roc"] = roc.roc()
+
+    # Remove rows with null values in any column
+    data.dropna(inplace=True)
 
 
 def calculate_pnl_short(last_close, entry_price, lended_qty):

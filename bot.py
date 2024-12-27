@@ -15,7 +15,7 @@ class TradingBot:
         leverage: int,
         risk_balance: float,
         max_positions: int = 1,
-        selected_strategy: str = "ichimoku_cloud_with_confirmation",
+        selected_strategy: str = "zeus",
     ):
         self.session = Binance(api_key, api_secret)
         self.strategy = Strategy()
@@ -28,17 +28,36 @@ class TradingBot:
         self.selected_strategy = selected_strategy
         self.kl = dict()
 
-    def fetch_klines_with_indicators(self, symbol, timeframe):
-        kl = self.session.klines(symbol, timeframe)
+    """
+    Data Functions
+    """
+
+    def fetch_klines_with_indicators(self, symbol, timeframe, use_cache=True):
+        if use_cache:
+            kl = pd.read_csv(f"data/{symbol}-{timeframe}.csv")
+            kl["Time"] = pd.to_datetime(kl["Time"])
+            kl.set_index("Time", inplace=True)
+        else:
+            kl = self.session.klines(symbol, timeframe)
         add_indicators(kl)
         return kl
 
-    def fetch_klines(self, symbols, timeframe):
+    def fetch_klines(self, symbols, timeframe, use_cache=True):
         for symbol in symbols:
-            self.kl[symbol] = self.session.klines(symbol, timeframe)
+            self.kl[symbol] = self.fetch_klines_with_indicators(
+                symbol, timeframe, use_cache
+            )
 
-    def determine_signal(self, kl, strategy):
-        return self.strategy.get_signal(kl, strategy)
+    def add_signals(self, strategy):
+        for symbol, klines in self.kl.items():
+            print(f"Adding signals for {strategy} on {symbol}")
+            for i in range(5, len(klines)):
+                kl_slice = klines.iloc[i - 5 : i]
+                sign = self.strategy.get_signal(kl_slice, strategy)
+                self.kl[symbol].loc[kl_slice.index[-1], f"{strategy}_signal"] = sign
+                self.kl[symbol].loc[kl_slice.index[-1], f"{strategy}_signal_price"] = (
+                    kl_slice.Close.iloc[-1] if sign != "hold" else None
+                )
 
     def create_signal(self, symbol, sign, kl):
         return {
@@ -47,11 +66,15 @@ class TradingBot:
             "entry_price": kl.Close.iloc[-1],
         }
 
+    """
+    Bot Functions
+    """
+
     def look_for_signals(self, symbols, timeframe):
         signals = []
         for symbol in symbols:
             kl = self.fetch_klines_with_indicators(symbol, timeframe)
-            sign = self.determine_signal(kl, self.selected_strategy)
+            sign = self.strategy.get_signal(kl, self.selected_strategy)
             if sign != "hold" and symbol not in self.positions:
                 signals.append(self.create_signal(symbol, sign, kl))
                 sleep(1)
@@ -78,33 +101,36 @@ class TradingBot:
             pnl = calculate_position_pnl(position, last_close)
             position["pnl"] = pnl
 
-    def enter_trade(self, kl_slice, sign, tp, sl, balance):
+    def enter_trade(self, entry_date, entry_price, sign, tp, sl, balance):
         trade = {
-            "entry_date": kl_slice.index[-1],
+            "entry_date": entry_date,
             "exit_date": None,
-            "entry_price": kl_slice.Close.iloc[-1],
+            "entry_price": entry_price,
             "exit_price": 0,
             "qty": balance * self.leverage * self.risk_balance,
             "sign": sign,
             "open": True,
         }
         if sign == "buy":
-            trade["tp_price"] = kl_slice.Close.iloc[-1] * (1 + tp)
-            trade["sl_price"] = kl_slice.Close.iloc[-1] * (1 - sl)
+            trade["tp_price"] = entry_price * (1 + tp)
+            trade["sl_price"] = entry_price * (1 - sl)
         else:
-            trade["tp_price"] = kl_slice.Close.iloc[-1] * (1 - tp)
-            trade["sl_price"] = kl_slice.Close.iloc[-1] * (1 + sl)
+            trade["tp_price"] = entry_price * (1 - tp)
+            trade["sl_price"] = entry_price * (1 + sl)
         return trade
+
+    """
+    Backtest Functions
+    """
 
     def backtest_strategy(self, symbol, tp, sl, balance, strategy):
         trades = []
         in_position = False
-        kl = self.kl[symbol]
         updated_balance = balance
 
-        for i in range(3, len(kl)):
-            kl_slice = kl.iloc[:i]
-            sign = self.determine_signal(kl_slice, strategy)
+        for i in range(3, len(self.kl[symbol])):
+            kl_slice = self.kl[symbol].iloc[:i]
+            sign = kl_slice[f"{strategy}_signal"].iloc[-1]
             if in_position:
                 trade = trades[-1]
                 if trade["sign"] == "buy":
@@ -142,7 +168,14 @@ class TradingBot:
 
             else:
                 if sign != "hold":
-                    trade = self.enter_trade(kl_slice, sign, tp, sl, updated_balance)
+                    trade = self.enter_trade(
+                        kl_slice.index[-1],
+                        kl_slice.Close.iloc[-1],
+                        sign,
+                        tp,
+                        sl,
+                        updated_balance,
+                    )
                     trade["starting_balance"] = updated_balance
                     trade["lended_qty"] = trade["qty"] / trade["entry_price"]
                     trade["pnl"] = calculate_position_pnl(
@@ -153,27 +186,14 @@ class TradingBot:
                     in_position = True
 
         if trades and trades[-1]["open"]:
-            trades[-1]["exit_price"] = kl.Close.iloc[-1]
-            trades[-1]["open"] = False
-            trades[-1]["pnl"] = calculate_position_pnl(trades[-1], kl.Close.iloc[-1])
+            trades[-1]["exit_price"] = self.kl[symbol].Close.iloc[-1]
+            trades[-1]["pnl"] = calculate_position_pnl(
+                trades[-1], self.kl[symbol].Close.iloc[-1]
+            )
             trades[-1]["starting_balance"] = updated_balance
             updated_balance = updated_balance + trades[-1]["pnl"]
             trades[-1]["final_balance"] = updated_balance
         return trades
-
-    def backtest(self, symbols, timeframe, tp, sl, balance, strategy):
-        for symbol in symbols:
-            trades = self.backtest_strategy(symbol, tp, sl, balance, strategy)
-            metrics = self.metrics.calculate_metrics(trades, balance)
-            for trade in trades:
-                if isinstance(trade.get("exit_date"), pd.Timestamp):
-                    trade["exit_date"] = trade["exit_date"].isoformat()
-
-                if isinstance(trade.get("entry_date"), pd.Timestamp):
-                    trade["entry_date"] = trade["entry_date"].isoformat()
-            self.write_backtest_results(
-                strategy, symbol, timeframe, tp, sl, balance, trades, metrics
-            )
 
     def write_backtest_results(
         self,
@@ -200,3 +220,17 @@ class TradingBot:
         # Save result to a JSON file
         with open(f"results/{strategy}_backtest_results_{symbol}.json", "w") as f:
             json.dump(result, f, indent=4)
+
+    def backtest(self, symbols, timeframe, tp, sl, balance, strategy):
+        for symbol in symbols:
+            trades = self.backtest_strategy(symbol, tp, sl, balance, strategy)
+            metrics = self.metrics.calculate_metrics(trades, balance)
+            for trade in trades:
+                if isinstance(trade.get("exit_date"), pd.Timestamp):
+                    trade["exit_date"] = trade["exit_date"].isoformat()
+
+                if isinstance(trade.get("entry_date"), pd.Timestamp):
+                    trade["entry_date"] = trade["entry_date"].isoformat()
+            self.write_backtest_results(
+                strategy, symbol, timeframe, tp, sl, balance, trades, metrics
+            )

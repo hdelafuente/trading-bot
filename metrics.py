@@ -28,16 +28,25 @@ class Metrics:
         sum_pnl_loss = sum(t["pnl"] for t in trades if t["pnl"] < 0)
         profit_factor = sum_pnl_win / abs(sum_pnl_loss) if sum_pnl_loss != 0 else 0
 
-        start_date = f"{trades[0]['entry_date'].year}-{trades[0]['entry_date'].month}-{trades[0]['entry_date'].day}"
+        if len(trades) > 0:
 
-        if trades[-1]["exit_date"]:
-            end_date = f"{trades[-1]['exit_date'].year}-{trades[-1]['exit_date'].month}-{trades[-1]['exit_date'].day}"
+            start_date = f"{trades[0]['entry_date'].year}-{trades[0]['entry_date'].month}-{trades[0]['entry_date'].day}"
+
+            if trades[-1]["exit_date"]:
+                end_date = f"{trades[-1]['exit_date'].year}-{trades[-1]['exit_date'].month}-{trades[-1]['exit_date'].day}"
+            else:
+                end_date = f"{trades[-2]['exit_date'].year}-{trades[-2]['exit_date'].month}-{trades[-2]['exit_date'].day}"
         else:
-            end_date = f"{trades[-2]['exit_date'].year}-{trades[-2]['exit_date'].month}-{trades[-2]['exit_date'].day}"
+            start_date = None
+            end_date = None
+
+        final_balance = (
+            trades[-1]["final_balance"] if len(trades) > 0 else initial_balance
+        )
 
         return {
             "initial_balance": round(initial_balance, 2),
-            "final_balance": round(trades[-1]["final_balance"], 2),
+            "final_balance": round(final_balance, 2),
             "win_ratio": round(win_ratio, 2),
             "average_win": round(average_win, 2),
             "average_loss": round(average_loss, 2),

@@ -107,6 +107,17 @@ class Binance:
                 f"Found error. status: {error.status_code}, error code: {error.error_code}, error message: {error.error_message}"
             )
 
+    def get_historical_klines(self, symbol, timeframe, start_date, end_date):
+        try:
+            resp = self.client.get_historical_klines(
+                symbol, timeframe, start_date, end_date
+            )
+            return resp
+        except ClientError as error:
+            print(
+                f"Found error. status: {error.status_code}, error code: {error.error_code}, error message: {error.error_message}"
+            )
+
     def set_leverage(self, symbol, level):
         try:
             response = self.client.change_leverage(
