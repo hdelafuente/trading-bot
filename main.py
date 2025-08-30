@@ -11,7 +11,6 @@ from utils import (
     LEVERAGE,
     RISK_BALANCE,
     BALANCE,
-    STRATEGY,
     extract_data,
 )
 from bot import TradingBot
@@ -80,7 +79,6 @@ if __name__ == "__main__":
             LEVERAGE,
             RISK_BALANCE,
             max_positions=3,
-            selected_strategy=STRATEGY,
         )
         if sys.argv[1] == "run":
             run(bot, SYMBOLS, TIMEFRAME, TP, SL)
@@ -89,7 +87,7 @@ if __name__ == "__main__":
         elif sys.argv[1] == "backtest":
             print("Fetching klines...")
             bot.fetch_klines(SYMBOLS, TIMEFRAME)
-            print(f"Backtesting {STRATEGY} on {SYMBOLS} ({TIMEFRAME})")
-            bot.add_signals(STRATEGY)
+            print(f"Backtesting on {SYMBOLS} ({TIMEFRAME})")
+            bot.add_signals()
             print("Running backtest...")
-            bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, STRATEGY)
+            bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE)

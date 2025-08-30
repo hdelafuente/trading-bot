@@ -10,7 +10,6 @@ from utils import (
     TIMEFRAME,
     LEVERAGE,
     RISK_BALANCE,
-    STRATEGY,
     load_backtest_results,
 )
 from plotly.subplots import make_subplots
@@ -92,7 +91,7 @@ app.layout = html.Div(
 )
 def update_content(selected_symbol: str):
     # Instantiate TradingBot and fetch klines with indicators
-    backtest_results = load_backtest_results(STRATEGY, selected_symbol)
+    backtest_results = load_backtest_results(selected_symbol)
     kl = bot.fetch_kline(selected_symbol, TIMEFRAME)
 
     if len(backtest_results["trades"]) > 0:
@@ -107,7 +106,8 @@ def update_content(selected_symbol: str):
 
         metrics_table = dash_table.DataTable(
             data=metrics_df_vertical.to_dict("records"),
-            columns=[{"name": i, "id": i} for i in metrics_df_vertical.columns],
+            columns=[{"name": i, "id": i}
+                     for i in metrics_df_vertical.columns],
             style_table={"overflowX": "auto"},
             style_cell={"textAlign": "left"},
         )

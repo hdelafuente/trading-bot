@@ -16,11 +16,10 @@ BALANCE = 300
 RISK_BALANCE = 0.3
 API_SECRET = os.environ.get("API_SECRET")
 API_KEY = os.environ.get("API_KEY")
-STRATEGY = "stoch_rsi_ema_200"
 
 
-def load_backtest_results(selected_strategy, symbol):
-    with open(f"results/{selected_strategy}_backtest_results_{symbol}.json", "r") as f:
+def load_backtest_results(symbol):
+    with open(f"results/backtest_results_{symbol}.json", "r") as f:
         result = json.load(f)
         result["symbol"] = symbol
         return result

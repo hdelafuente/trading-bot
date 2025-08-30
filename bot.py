@@ -15,7 +15,6 @@ class TradingBot:
         leverage: int,
         risk_balance: float,
         max_positions: int = 1,
-        selected_strategy: str = "stoch_rsi_ema_200",
     ):
         self.session = Binance(api_key, api_secret)
         self.strategy = Strategy()
@@ -25,7 +24,6 @@ class TradingBot:
         self.max_positions = max_positions
         self.positions = list()
         self.trades = list()
-        self.selected_strategy = selected_strategy
         self.kl = dict()
 
     """
@@ -42,17 +40,17 @@ class TradingBot:
         for symbol in symbols:
             self.kl[symbol] = self.fetch_kline(symbol, timeframe)
 
-    def add_signals(self, strategy):
+    def add_signals(self):
         window = 20
         for symbol, klines in self.kl.items():
-            print(f"Adding signals for {strategy} on {symbol}")
+            print(f"Adding signals on {symbol}")
 
             # Pre-calculate necessary columns for signal determination
             signals = []
             signal_prices = []
 
             for i in range(window, len(klines)):
-                kl_slice = klines.iloc[i - window : i]
+                kl_slice = klines.iloc[i - window: i]
                 sign = self.strategy.get_signal(kl_slice)
                 signals.append(sign)
                 signal_prices.append(
@@ -60,8 +58,8 @@ class TradingBot:
                 )
 
             # Assign the calculated signals and prices to the DataFrame
-            self.kl[symbol][f"{strategy}_signal"] = [None] * window + signals
-            self.kl[symbol][f"{strategy}_signal_price"] = [
+            self.kl[symbol]["signal"] = [None] * window + signals
+            self.kl[symbol]["signal_price"] = [
                 None
             ] * window + signal_prices
 
@@ -129,14 +127,14 @@ class TradingBot:
     Backtest Functions
     """
 
-    def backtest_strategy(self, symbol, tp, sl, balance, strategy):
+    def backtest_strategy(self, symbol, tp, sl, balance):
         trades = []
         in_position = False
         updated_balance = balance
 
         for i in range(3, len(self.kl[symbol])):
             kl_slice = self.kl[symbol].iloc[:i]
-            sign = kl_slice[f"{strategy}_signal"].iloc[-1]
+            sign = kl_slice["signal"].iloc[-1]
             if in_position:
                 trade = trades[-1]
                 if trade["sign"] == "buy":
@@ -187,7 +185,8 @@ class TradingBot:
                     trade["pnl"] = calculate_position_pnl(
                         trade, kl_slice.Close.iloc[-1]
                     )
-                    updated_balance -= trade["starting_balance"] * self.risk_balance
+                    updated_balance -= trade["starting_balance"] * \
+                        self.risk_balance
                     trades.append(trade)
                     in_position = True
 
@@ -203,7 +202,6 @@ class TradingBot:
 
     def write_backtest_results(
         self,
-        strategy,
         symbol,
         timeframe,
         tp,
@@ -224,12 +222,12 @@ class TradingBot:
         result = {"metrics": metrics, "trades": trades, "config": config}
 
         # Save result to a JSON file
-        with open(f"results/{strategy}_backtest_results_{symbol}.json", "w") as f:
+        with open(f"results/backtest_results_{symbol}.json", "w") as f:
             json.dump(result, f, indent=4)
 
-    def backtest(self, symbols, timeframe, tp, sl, balance, strategy):
+    def backtest(self, symbols, timeframe, tp, sl, balance):
         for symbol in symbols:
-            trades = self.backtest_strategy(symbol, tp, sl, balance, strategy)
+            trades = self.backtest_strategy(symbol, tp, sl, balance)
             metrics = self.metrics.calculate_metrics(trades, balance)
             for trade in trades:
                 if isinstance(trade.get("exit_date"), pd.Timestamp):
@@ -238,5 +236,5 @@ class TradingBot:
                 if isinstance(trade.get("entry_date"), pd.Timestamp):
                     trade["entry_date"] = trade["entry_date"].isoformat()
             self.write_backtest_results(
-                strategy, symbol, timeframe, tp, sl, balance, trades, metrics
+                symbol, timeframe, tp, sl, balance, trades, metrics
             )
