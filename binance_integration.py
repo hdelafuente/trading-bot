@@ -1,4 +1,4 @@
-from binance.um_futures import UMFutures
+from binance.client import Client
 import pandas as pd
 from time import sleep
 from binance.error import ClientError
@@ -8,11 +8,11 @@ class Binance:
     def __init__(self, api, secret):
         self.api = api
         self.secret = secret
-        self.client = UMFutures(key=api, secret=secret)
+        self.client = Client(api, secret)
 
     def get_balance_usdt(self):
         try:
-            response = self.client.balance(recvWindow=10000)
+            response = self.client.futures_account_balance(recvWindow=10000)
             for elem in response:
                 if elem["asset"] == "USDT":
                     return float(elem["balance"])
@@ -23,7 +23,7 @@ class Binance:
 
     def get_positions(self):
         try:
-            resp = self.client.get_position_risk(recvWindow=10000)
+            resp = self.client.futures_position_risk(recvWindow=10000)
             pos = []
             for elem in resp:
                 if float(elem["positionAmt"]) != 0:
@@ -36,7 +36,7 @@ class Binance:
 
     def check_orders(self):
         try:
-            response = self.client.get_orders(recvWindow=10000)
+            response = self.client.futures_get_orders(recvWindow=10000)
             sym = []
             for elem in response:
                 sym.append(elem["symbol"])
@@ -48,7 +48,9 @@ class Binance:
 
     def close_open_orders(self, symbol):
         try:
-            response = self.client.cancel_open_orders(symbol=symbol, recvWindow=10000)
+            response = self.client.futures_cancel_open_orders(
+                symbol=symbol, recvWindow=10000
+            )
             print("Orders Closed")
         except ClientError as error:
             print(
@@ -57,7 +59,7 @@ class Binance:
 
     def get_ticker_usdt(self, symbol: str):
         try:
-            resp = self.client.ticker_price(symbol=symbol)
+            resp = self.client.futures_ticker_price(symbol=symbol)
             return float(resp["price"])
         except ClientError as error:
             print(
@@ -67,7 +69,7 @@ class Binance:
     def get_tickers_usdt(self):
         try:
             tickers = []
-            resp = self.client.ticker_price()
+            resp = self.client.futures_ticker_price()
             for elem in resp:
                 if "USDT" in elem["symbol"]:
                     tickers.append(elem)
@@ -79,7 +81,7 @@ class Binance:
 
     def get_pnl(self, limit):
         try:
-            resp = self.client.get_income_history(
+            resp = self.client.futures_income_history(
                 incomeType="REALIZED_PNL", limit=limit, recvWindow=10000
             )[::-1]
             pnl = 0
@@ -94,7 +96,9 @@ class Binance:
     def klines(self, symbol, timeframe):
         try:
             resp = pd.DataFrame(
-                self.client.klines(symbol, timeframe, recvWindow=10000, limit=1000)
+                self.client.futures_klines(
+                    symbol, timeframe, recvWindow=10000, limit=1000
+                )
             )
             resp = resp.iloc[:, :6]
             resp.columns = ["Time", "Open", "High", "Low", "Close", "Volume"]
@@ -109,8 +113,11 @@ class Binance:
 
     def get_historical_klines(self, symbol, timeframe, start_date, end_date):
         try:
-            resp = self.client.get_historical_klines(
-                symbol, timeframe, start_date, end_date
+            resp = self.client.futures_historical_klines(
+                symbol,
+                timeframe,
+                start_date,
+                end_date,
             )
             return resp
         except ClientError as error:
@@ -120,7 +127,7 @@ class Binance:
 
     def set_leverage(self, symbol, level):
         try:
-            response = self.client.change_leverage(
+            response = self.client.futures_change_leverage(
                 symbol=symbol, leverage=level, recvWindow=10000
             )
         except ClientError as error:
@@ -130,7 +137,7 @@ class Binance:
 
     def set_mode(self, symbol, type):
         try:
-            response = self.client.change_margin_type(
+            response = self.client.futures_change_margin_type(
                 symbol=symbol, marginType=type, recvWindow=10000
             )
         except ClientError as error:
@@ -140,7 +147,7 @@ class Binance:
 
     def get_precisions(self, symbol):
         try:
-            resp = self.client.exchange_info()["symbols"]
+            resp = self.client.futures_exchange_info()["symbols"]
             for elem in resp:
                 if elem["symbol"] == symbol:
                     return elem["pricePrecision"], elem["quantityPrecision"]
@@ -151,7 +158,7 @@ class Binance:
 
     def get_commission(self, symbol):
         try:
-            resp = self.client.commission_rate(symbol=symbol, recvWindow=10000)
+            resp = self.client.futures_commission_rate(symbol=symbol, recvWindow=10000)
             return float(resp["makerCommissionRate"]), float(
                 resp["takerCommissionRate"]
             )
@@ -163,13 +170,13 @@ class Binance:
     def open_order_market(self, symbol, side, volume, leverage, mode, tp, sl):
         self.set_leverage(symbol, leverage)
         self.set_mode(symbol, mode)
-        price = float(self.client.ticker_price(symbol)["price"])
+        price = float(self.client.futures_ticker_price(symbol)["price"])
         qty_precision = self.get_precisions(symbol)[1]
         price_precision = self.get_precisions(symbol)[0]
         qty = round(volume / price, qty_precision)
         if side == "buy":
             try:
-                resp1 = self.client.new_order(
+                resp1 = self.client.futures_new_order(
                     symbol=symbol,
                     side="BUY",
                     type="MARKET",
@@ -178,7 +185,7 @@ class Binance:
                 )
                 sleep(1)
                 sl_price = round(price - price * sl, price_precision)
-                resp2 = self.client.new_order(
+                resp2 = self.client.futures_new_order(
                     symbol=symbol,
                     side="SELL",
                     type="STOP_MARKET",
@@ -190,7 +197,7 @@ class Binance:
                 )
                 sleep(1)
                 tp_price = round(price + price * tp, price_precision)
-                resp3 = self.client.new_order(
+                resp3 = self.client.futures_new_order(
                     symbol=symbol,
                     side="SELL",
                     type="TAKE_PROFIT_MARKET",
@@ -206,7 +213,7 @@ class Binance:
                 )
         if side == "sell":
             try:
-                resp1 = self.client.new_order(
+                resp1 = self.client.futures_new_order(
                     symbol=symbol,
                     side="SELL",
                     type="MARKET",
@@ -215,7 +222,7 @@ class Binance:
                 )
                 sleep(1)
                 sl_price = round(price + price * sl, price_precision)
-                resp2 = self.client.new_order(
+                resp2 = self.client.futures_new_order(
                     symbol=symbol,
                     side="BUY",
                     type="STOP_MARKET",
@@ -227,7 +234,7 @@ class Binance:
                 )
                 sleep(1)
                 tp_price = round(price - price * tp, price_precision)
-                resp3 = self.client.new_order(
+                resp3 = self.client.futures_new_order(
                     symbol=symbol,
                     side="BUY",
                     type="TAKE_PROFIT_MARKET",

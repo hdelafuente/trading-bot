@@ -15,7 +15,7 @@ class TradingBot:
         leverage: int,
         risk_balance: float,
         max_positions: int = 1,
-        selected_strategy: str = "zeus",
+        selected_strategy: str = "stoch_rsi_ema_200",
     ):
         self.session = Binance(api_key, api_secret)
         self.strategy = Strategy()
@@ -32,32 +32,38 @@ class TradingBot:
     Data Functions
     """
 
-    def fetch_klines_with_indicators(self, symbol, timeframe, use_cache=True):
-        if use_cache:
-            kl = pd.read_csv(f"data/{symbol}-{timeframe}.csv")
-            kl["Time"] = pd.to_datetime(kl["Time"])
-            kl.set_index("Time", inplace=True)
-        else:
-            kl = self.session.klines(symbol, timeframe)
-        add_indicators(kl)
-        return kl
+    def fetch_kline(self, symbol, timeframe):
+        kl = pd.read_csv(f"data/{symbol}-{timeframe}.csv")
+        kl["Time"] = pd.to_datetime(kl["Time"])
+        kl.set_index("Time", inplace=True)
+        return kl.tail(5000)
 
-    def fetch_klines(self, symbols, timeframe, use_cache=True):
+    def fetch_klines(self, symbols, timeframe):
         for symbol in symbols:
-            self.kl[symbol] = self.fetch_klines_with_indicators(
-                symbol, timeframe, use_cache
-            )
+            self.kl[symbol] = self.fetch_kline(symbol, timeframe)
 
     def add_signals(self, strategy):
+        window = 20
         for symbol, klines in self.kl.items():
             print(f"Adding signals for {strategy} on {symbol}")
-            for i in range(5, len(klines)):
-                kl_slice = klines.iloc[i - 5 : i]
-                sign = self.strategy.get_signal(kl_slice, strategy)
-                self.kl[symbol].loc[kl_slice.index[-1], f"{strategy}_signal"] = sign
-                self.kl[symbol].loc[kl_slice.index[-1], f"{strategy}_signal_price"] = (
+
+            # Pre-calculate necessary columns for signal determination
+            signals = []
+            signal_prices = []
+
+            for i in range(window, len(klines)):
+                kl_slice = klines.iloc[i - window : i]
+                sign = self.strategy.get_signal(kl_slice)
+                signals.append(sign)
+                signal_prices.append(
                     kl_slice.Close.iloc[-1] if sign != "hold" else None
                 )
+
+            # Assign the calculated signals and prices to the DataFrame
+            self.kl[symbol][f"{strategy}_signal"] = [None] * window + signals
+            self.kl[symbol][f"{strategy}_signal_price"] = [
+                None
+            ] * window + signal_prices
 
     def create_signal(self, symbol, sign, kl):
         return {
@@ -73,8 +79,8 @@ class TradingBot:
     def look_for_signals(self, symbols, timeframe):
         signals = []
         for symbol in symbols:
-            kl = self.fetch_klines_with_indicators(symbol, timeframe)
-            sign = self.strategy.get_signal(kl, self.selected_strategy)
+            kl = self.fetch_kline(symbol, timeframe)
+            sign = self.strategy.get_signal(kl)
             if sign != "hold" and symbol not in self.positions:
                 signals.append(self.create_signal(symbol, sign, kl))
                 sleep(1)

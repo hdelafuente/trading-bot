@@ -10,7 +10,7 @@ from utils import (
     TIMEFRAME,
     LEVERAGE,
     RISK_BALANCE,
-    STRATEGIES,
+    STRATEGY,
     load_backtest_results,
 )
 from plotly.subplots import make_subplots
@@ -31,12 +31,6 @@ app = dash.Dash(__name__)
 app.layout = html.Div(
     [
         html.H1("Backtest Results"),
-        dcc.Dropdown(
-            id="strategy-dropdown",
-            options=[{"label": strategy, "value": strategy} for strategy in STRATEGIES],
-            value=STRATEGIES[-1],  # Default strategy
-            style={"margin-bottom": "20px"},
-        ),
         dcc.Dropdown(
             id="symbol-dropdown",
             options=[{"label": symbol, "value": symbol} for symbol in SYMBOLS],
@@ -94,12 +88,12 @@ app.layout = html.Div(
         Output("price-line-chart", "figure"),
         Output("balance-line-chart", "figure"),
     ],
-    [Input("symbol-dropdown", "value"), Input("strategy-dropdown", "value")],
+    [Input("symbol-dropdown", "value")],
 )
-def update_content(selected_symbol: str, selected_strategy: str):
+def update_content(selected_symbol: str):
     # Instantiate TradingBot and fetch klines with indicators
-    backtest_results = load_backtest_results(selected_strategy, selected_symbol)
-    kl = bot.fetch_klines_with_indicators(selected_symbol, TIMEFRAME)
+    backtest_results = load_backtest_results(STRATEGY, selected_symbol)
+    kl = bot.fetch_kline(selected_symbol, TIMEFRAME)
 
     if len(backtest_results["trades"]) > 0:
         # Filter results for the selected symbol
@@ -219,7 +213,7 @@ def update_content(selected_symbol: str, selected_strategy: str):
                 mode="markers",
                 name="Open Long",
                 marker=dict(color="green", size=10, symbol="triangle-up"),
-                hovertemplate="Date: %{x}<br>Buy Price: %{y}<extra></extra>",
+                hovertemplate="Date: %{x}<br>Open Long: %{y}<extra></extra>",
             ),
             row=1,
             col=1,
@@ -231,25 +225,37 @@ def update_content(selected_symbol: str, selected_strategy: str):
                 mode="markers",
                 name="Close Long",
                 marker=dict(color="green", size=10, symbol="triangle-down"),
-                hovertemplate="Date: %{x}<br>Buy Price: %{y}<extra></extra>",
+                hovertemplate="Date: %{x}<br>Exit Long: %{y}<extra></extra>",
             ),
             row=1,
             col=1,
         )
 
-        # # Add sell signals
-        # fig.add_trace(
-        #     go.Scatter(
-        #         x=plot_kl.index,
-        #         y=plot_kl["sell_entry_price"],
-        #         mode="markers",
-        #         name="Sell Signal",
-        #         marker=dict(color="red", size=10, symbol="triangle-down"),
-        #         hovertemplate="Date: %{x}<br>Sell Price: %{y}<extra></extra>",
-        #     ),
-        #     row=1,
-        #     col=1,
-        # )
+        # Add sell signals
+        fig.add_trace(
+            go.Scatter(
+                x=plot_kl.index,
+                y=plot_kl["sell_entry_price"],
+                mode="markers",
+                name="Open Short",
+                marker=dict(color="red", size=10, symbol="triangle-down"),
+                hovertemplate="Date: %{x}<br>Open Short: %{y}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=plot_kl.index,
+                y=plot_kl["sell_exit_price"],
+                mode="markers",
+                name="Close Short",
+                marker=dict(color="red", size=10, symbol="triangle-up"),
+                hovertemplate="Date: %{x}<br>Exit Short: %{y}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
         # Add second row
         fig.add_trace(
             go.Scatter(

@@ -1,5 +1,4 @@
 import sys
-import time
 import pandas as pd
 from time import sleep
 from utils import (
@@ -12,8 +11,8 @@ from utils import (
     LEVERAGE,
     RISK_BALANCE,
     BALANCE,
-    STRATEGIES,
     STRATEGY,
+    extract_data,
 )
 from bot import TradingBot
 
@@ -24,7 +23,6 @@ def run(
     timeframe: str,
     tp: float,
     sl: float,
-    strategy: str,
 ):
     mode = "ISOLATED"
 
@@ -40,7 +38,8 @@ def run(
                     bot.session.close_open_orders(elem["symbol"])
 
             print(f"Balance: {round(balance, 3)} USDT")
-            print(f"{len(positions)} Positions: {[pos['symbol'] for pos in positions]}")
+            print(
+                f"{len(positions)} Positions: {[pos['symbol'] for pos in positions]}")
             bot.update_positions_pnl()
 
             for pos in positions:
@@ -83,33 +82,14 @@ if __name__ == "__main__":
             max_positions=3,
             selected_strategy=STRATEGY,
         )
-        print("Fetching klines...")
-        bot.fetch_klines(SYMBOLS, TIMEFRAME)
         if sys.argv[1] == "run":
-            run(bot, SYMBOLS, TIMEFRAME, TP, SL, STRATEGY)
+            run(bot, SYMBOLS, TIMEFRAME, TP, SL)
+        elif sys.argv[1] == "extract":
+            extract_data()
         elif sys.argv[1] == "backtest":
-            if not len(sys.argv) > 2:
-                print("Please specify a strategy to backtest")
-                sys.exit(1)
-            else:
-                strategy = sys.argv[2]
-
-                if strategy == "all":
-                    for strategy in STRATEGIES:
-                        print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
-                        bot.add_signals(strategy)
-                        bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
-                else:
-                    if strategy not in STRATEGIES:
-                        print(f"Strategy {strategy} not found")
-                        sys.exit(1)
-                    print(f"Backtesting {strategy} on {SYMBOLS} ({TIMEFRAME})")
-                    print("Adding signals...")
-                    start_time = time.time()
-                    bot.add_signals(strategy)
-                    print(f"Adding signals took {time.time() - start_time:.2f} seconds")
-
-                    print("Running backtest...")
-                    start_time = time.time()
-                    bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, strategy)
-                    print(f"Backtest took {time.time() - start_time:.2f} seconds")
+            print("Fetching klines...")
+            bot.fetch_klines(SYMBOLS, TIMEFRAME)
+            print(f"Backtesting {STRATEGY} on {SYMBOLS} ({TIMEFRAME})")
+            bot.add_signals(STRATEGY)
+            print("Running backtest...")
+            bot.backtest(SYMBOLS, TIMEFRAME, TP, SL, BALANCE, STRATEGY)
